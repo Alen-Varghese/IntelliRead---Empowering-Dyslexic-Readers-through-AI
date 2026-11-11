@@ -1,0 +1,10 @@
+project_id = "meiwtpjyobntvzzgeotn"
+
+[functions.predict]
+verify_jwt = false
+
+[functions.ocr-extract]
+verify_jwt = false
+
+[functions.evaluation]
+verify_jwt = false

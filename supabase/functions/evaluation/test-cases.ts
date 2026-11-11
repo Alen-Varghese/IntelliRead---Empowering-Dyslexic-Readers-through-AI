@@ -1,0 +1,498 @@
+// Synthetic Test Cases for Rule-Based Evaluation Framework
+// Each test case has known injected errors at specific positions
+
+export interface InjectedError {
+  type: 'substitution' | 'omission' | 'insertion' | 'transposition' | 'reversal';
+  originalWord: string;
+  errorWord: string;
+  position: number; // word index
+  charPositions: number[]; // character positions affected
+}
+
+export interface TestCase {
+  id: string;
+  category: string;
+  referenceText: string;
+  userText: string;
+  injectedErrors: InjectedError[];
+  description: string;
+}
+
+// Generate character positions for a word in text
+function getCharPositions(text: string, wordIndex: number): number[] {
+  const words = text.split(/\s+/);
+  let charPos = 0;
+  for (let i = 0; i < wordIndex; i++) {
+    charPos += words[i].length + 1; // +1 for space
+  }
+  return Array.from({ length: words[wordIndex].length }, (_, i) => charPos + i);
+}
+
+// =====================================================
+// SUBSTITUTION TEST CASES
+// =====================================================
+export const substitutionTestCases: TestCase[] = [
+  {
+    id: 'sub_1',
+    category: 'substitution',
+    referenceText: 'The bird flew high in the sky',
+    userText: 'The brid flew high in the sky',
+    injectedErrors: [{
+      type: 'substitution',
+      originalWord: 'bird',
+      errorWord: 'brid',
+      position: 1,
+      charPositions: [4, 5, 6, 7]
+    }],
+    description: 'Single letter substitution/swap (i→r)'
+  },
+  {
+    id: 'sub_2',
+    category: 'substitution',
+    referenceText: 'Reading books helps children learn',
+    userText: 'Reeding books halps children lern',
+    injectedErrors: [
+      { type: 'substitution', originalWord: 'Reading', errorWord: 'Reeding', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'substitution', originalWord: 'helps', errorWord: 'halps', position: 2, charPositions: [14, 15, 16, 17, 18] },
+      { type: 'substitution', originalWord: 'learn', errorWord: 'lern', position: 4, charPositions: [29, 30, 31, 32] }
+    ],
+    description: 'Multiple vowel substitutions'
+  },
+  {
+    id: 'sub_3',
+    category: 'substitution',
+    referenceText: 'The dog ran fast across the park',
+    userText: 'The bog ran fast across the dark',
+    injectedErrors: [
+      { type: 'substitution', originalWord: 'dog', errorWord: 'bog', position: 1, charPositions: [4, 5, 6] },
+      { type: 'substitution', originalWord: 'park', errorWord: 'dark', position: 7, charPositions: [28, 29, 30, 31] }
+    ],
+    description: 'Consonant substitutions (d↔b, p↔d)'
+  },
+  {
+    id: 'sub_4',
+    category: 'substitution',
+    referenceText: 'Please write your name clearly',
+    userText: 'Please writ your nam cleerly',
+    injectedErrors: [
+      { type: 'substitution', originalWord: 'write', errorWord: 'writ', position: 1, charPositions: [7, 8, 9, 10] },
+      { type: 'substitution', originalWord: 'name', errorWord: 'nam', position: 3, charPositions: [17, 18, 19] },
+      { type: 'substitution', originalWord: 'clearly', errorWord: 'cleerly', position: 4, charPositions: [21, 22, 23, 24, 25, 26, 27] }
+    ],
+    description: 'Mixed substitutions with phonetic confusion'
+  },
+  {
+    id: 'sub_5',
+    category: 'substitution',
+    referenceText: 'Science experiments are exciting',
+    userText: 'Scince experaments are exiting',
+    injectedErrors: [
+      { type: 'substitution', originalWord: 'Science', errorWord: 'Scince', position: 0, charPositions: [0, 1, 2, 3, 4, 5] },
+      { type: 'substitution', originalWord: 'experiments', errorWord: 'experaments', position: 1, charPositions: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] },
+      { type: 'substitution', originalWord: 'exciting', errorWord: 'exiting', position: 3, charPositions: [23, 24, 25, 26, 27, 28, 29] }
+    ],
+    description: 'Complex multi-syllable substitutions'
+  }
+];
+
+// =====================================================
+// OMISSION TEST CASES
+// =====================================================
+export const omissionTestCases: TestCase[] = [
+  {
+    id: 'omit_1',
+    category: 'omission',
+    referenceText: 'The beautiful garden has flowers',
+    userText: 'The beautful garden has flowers',
+    injectedErrors: [{
+      type: 'omission',
+      originalWord: 'beautiful',
+      errorWord: 'beautful',
+      position: 1,
+      charPositions: [4, 5, 6, 7, 8, 9, 10, 11]
+    }],
+    description: 'Single letter omission (i missing)'
+  },
+  {
+    id: 'omit_2',
+    category: 'omission',
+    referenceText: 'Students should complete their homework',
+    userText: 'Studnts shoud complet thir homwork',
+    injectedErrors: [
+      { type: 'omission', originalWord: 'Students', errorWord: 'Studnts', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'omission', originalWord: 'should', errorWord: 'shoud', position: 1, charPositions: [8, 9, 10, 11, 12] },
+      { type: 'omission', originalWord: 'complete', errorWord: 'complet', position: 2, charPositions: [14, 15, 16, 17, 18, 19, 20] },
+      { type: 'omission', originalWord: 'their', errorWord: 'thir', position: 3, charPositions: [22, 23, 24, 25] },
+      { type: 'omission', originalWord: 'homework', errorWord: 'homwork', position: 4, charPositions: [27, 28, 29, 30, 31, 32, 33] }
+    ],
+    description: 'Multiple letter omissions throughout sentence'
+  },
+  {
+    id: 'omit_3',
+    category: 'omission',
+    referenceText: 'Everyone needs practice to improve',
+    userText: 'Evryone neds practce to imprve',
+    injectedErrors: [
+      { type: 'omission', originalWord: 'Everyone', errorWord: 'Evryone', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'omission', originalWord: 'needs', errorWord: 'neds', position: 1, charPositions: [8, 9, 10, 11] },
+      { type: 'omission', originalWord: 'practice', errorWord: 'practce', position: 2, charPositions: [13, 14, 15, 16, 17, 18, 19] },
+      { type: 'omission', originalWord: 'improve', errorWord: 'imprve', position: 4, charPositions: [24, 25, 26, 27, 28, 29] }
+    ],
+    description: 'Vowel omissions pattern'
+  },
+  {
+    id: 'omit_4',
+    category: 'omission',
+    referenceText: 'The elephant walked through the forest',
+    userText: 'The elphant waked through the frest',
+    injectedErrors: [
+      { type: 'omission', originalWord: 'elephant', errorWord: 'elphant', position: 1, charPositions: [4, 5, 6, 7, 8, 9, 10] },
+      { type: 'omission', originalWord: 'walked', errorWord: 'waked', position: 2, charPositions: [12, 13, 14, 15, 16] },
+      { type: 'omission', originalWord: 'forest', errorWord: 'frest', position: 5, charPositions: [31, 32, 33, 34, 35] }
+    ],
+    description: 'Consonant and vowel omissions'
+  },
+  {
+    id: 'omit_5',
+    category: 'omission',
+    referenceText: 'Mathematics requires concentration',
+    userText: 'Mathmatics requres concetration',
+    injectedErrors: [
+      { type: 'omission', originalWord: 'Mathematics', errorWord: 'Mathmatics', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+      { type: 'omission', originalWord: 'requires', errorWord: 'requres', position: 1, charPositions: [11, 12, 13, 14, 15, 16, 17] },
+      { type: 'omission', originalWord: 'concentration', errorWord: 'concetration', position: 2, charPositions: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] }
+    ],
+    description: 'Complex word omissions'
+  }
+];
+
+// =====================================================
+// INSERTION TEST CASES
+// =====================================================
+export const insertionTestCases: TestCase[] = [
+  {
+    id: 'ins_1',
+    category: 'insertion',
+    referenceText: 'The cat sat on the mat',
+    userText: 'The catt sat on the matt',
+    injectedErrors: [
+      { type: 'insertion', originalWord: 'cat', errorWord: 'catt', position: 1, charPositions: [4, 5, 6, 7] },
+      { type: 'insertion', originalWord: 'mat', errorWord: 'matt', position: 5, charPositions: [19, 20, 21, 22] }
+    ],
+    description: 'Letter doubling insertions'
+  },
+  {
+    id: 'ins_2',
+    category: 'insertion',
+    referenceText: 'Happy children play together',
+    userText: 'Happpy childeren plaay togethier',
+    injectedErrors: [
+      { type: 'insertion', originalWord: 'Happy', errorWord: 'Happpy', position: 0, charPositions: [0, 1, 2, 3, 4, 5] },
+      { type: 'insertion', originalWord: 'children', errorWord: 'childeren', position: 1, charPositions: [7, 8, 9, 10, 11, 12, 13, 14, 15] },
+      { type: 'insertion', originalWord: 'play', errorWord: 'plaay', position: 2, charPositions: [17, 18, 19, 20, 21] },
+      { type: 'insertion', originalWord: 'together', errorWord: 'togethier', position: 3, charPositions: [23, 24, 25, 26, 27, 28, 29, 30, 31] }
+    ],
+    description: 'Multiple vowel insertions'
+  },
+  {
+    id: 'ins_3',
+    category: 'insertion',
+    referenceText: 'Winter brings cold weather',
+    userText: 'Winterr bringgs colld weatther',
+    injectedErrors: [
+      { type: 'insertion', originalWord: 'Winter', errorWord: 'Winterr', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'insertion', originalWord: 'brings', errorWord: 'bringgs', position: 1, charPositions: [8, 9, 10, 11, 12, 13, 14] },
+      { type: 'insertion', originalWord: 'cold', errorWord: 'colld', position: 2, charPositions: [16, 17, 18, 19, 20] },
+      { type: 'insertion', originalWord: 'weather', errorWord: 'weatther', position: 3, charPositions: [22, 23, 24, 25, 26, 27, 28, 29] }
+    ],
+    description: 'Consonant doubling insertions'
+  },
+  {
+    id: 'ins_4',
+    category: 'insertion',
+    referenceText: 'Please read the book carefully',
+    userText: 'Pleasee reade thee booke carefullly',
+    injectedErrors: [
+      { type: 'insertion', originalWord: 'Please', errorWord: 'Pleasee', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'insertion', originalWord: 'read', errorWord: 'reade', position: 1, charPositions: [8, 9, 10, 11, 12] },
+      { type: 'insertion', originalWord: 'the', errorWord: 'thee', position: 2, charPositions: [14, 15, 16, 17] },
+      { type: 'insertion', originalWord: 'book', errorWord: 'booke', position: 3, charPositions: [19, 20, 21, 22, 23] },
+      { type: 'insertion', originalWord: 'carefully', errorWord: 'carefullly', position: 4, charPositions: [25, 26, 27, 28, 29, 30, 31, 32, 33, 34] }
+    ],
+    description: 'Mixed insertion patterns'
+  },
+  {
+    id: 'ins_5',
+    category: 'insertion',
+    referenceText: 'The sun shines bright today',
+    userText: 'Thee sunn shinees brightt todayy',
+    injectedErrors: [
+      { type: 'insertion', originalWord: 'The', errorWord: 'Thee', position: 0, charPositions: [0, 1, 2, 3] },
+      { type: 'insertion', originalWord: 'sun', errorWord: 'sunn', position: 1, charPositions: [5, 6, 7, 8] },
+      { type: 'insertion', originalWord: 'shines', errorWord: 'shinees', position: 2, charPositions: [10, 11, 12, 13, 14, 15, 16] },
+      { type: 'insertion', originalWord: 'bright', errorWord: 'brightt', position: 3, charPositions: [18, 19, 20, 21, 22, 23, 24] },
+      { type: 'insertion', originalWord: 'today', errorWord: 'todayy', position: 4, charPositions: [26, 27, 28, 29, 30, 31] }
+    ],
+    description: 'Trailing letter insertions'
+  }
+];
+
+// =====================================================
+// TRANSPOSITION TEST CASES
+// =====================================================
+export const transpositionTestCases: TestCase[] = [
+  {
+    id: 'trans_1',
+    category: 'transposition',
+    referenceText: 'The quick brown fox jumps',
+    userText: 'Teh qiuck brown fox jumps',
+    injectedErrors: [
+      { type: 'transposition', originalWord: 'The', errorWord: 'Teh', position: 0, charPositions: [0, 1, 2] },
+      { type: 'transposition', originalWord: 'quick', errorWord: 'qiuck', position: 1, charPositions: [4, 5, 6, 7, 8] }
+    ],
+    description: 'Common transposition patterns (the→teh)'
+  },
+  {
+    id: 'trans_2',
+    category: 'transposition',
+    referenceText: 'People from different countries',
+    userText: 'Poeple form differnet countires',
+    injectedErrors: [
+      { type: 'transposition', originalWord: 'People', errorWord: 'Poeple', position: 0, charPositions: [0, 1, 2, 3, 4, 5] },
+      { type: 'transposition', originalWord: 'from', errorWord: 'form', position: 1, charPositions: [7, 8, 9, 10] },
+      { type: 'transposition', originalWord: 'different', errorWord: 'differnet', position: 2, charPositions: [12, 13, 14, 15, 16, 17, 18, 19, 20] },
+      { type: 'transposition', originalWord: 'countries', errorWord: 'countires', position: 3, charPositions: [22, 23, 24, 25, 26, 27, 28, 29, 30] }
+    ],
+    description: 'Multiple transpositions in sentence'
+  },
+  {
+    id: 'trans_3',
+    category: 'transposition',
+    referenceText: 'Their friend said hello warmly',
+    userText: 'Thier freind siad hello warlmy',
+    injectedErrors: [
+      { type: 'transposition', originalWord: 'Their', errorWord: 'Thier', position: 0, charPositions: [0, 1, 2, 3, 4] },
+      { type: 'transposition', originalWord: 'friend', errorWord: 'freind', position: 1, charPositions: [6, 7, 8, 9, 10, 11] },
+      { type: 'transposition', originalWord: 'said', errorWord: 'siad', position: 2, charPositions: [13, 14, 15, 16] },
+      { type: 'transposition', originalWord: 'warmly', errorWord: 'warlmy', position: 4, charPositions: [24, 25, 26, 27, 28, 29] }
+    ],
+    description: 'Adjacent letter swaps (ie/ei confusion)'
+  },
+  {
+    id: 'trans_4',
+    category: 'transposition',
+    referenceText: 'Scientists believe interesting facts',
+    userText: 'Scienitsts beleive intresting fatcs',
+    injectedErrors: [
+      { type: 'transposition', originalWord: 'Scientists', errorWord: 'Scienitsts', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+      { type: 'transposition', originalWord: 'believe', errorWord: 'beleive', position: 1, charPositions: [11, 12, 13, 14, 15, 16, 17] },
+      { type: 'transposition', originalWord: 'interesting', errorWord: 'intresting', position: 2, charPositions: [19, 20, 21, 22, 23, 24, 25, 26, 27, 28] },
+      { type: 'transposition', originalWord: 'facts', errorWord: 'fatcs', position: 3, charPositions: [30, 31, 32, 33, 34] }
+    ],
+    description: 'Complex word transpositions'
+  },
+  {
+    id: 'trans_5',
+    category: 'transposition',
+    referenceText: 'Receive pieces of information daily',
+    userText: 'Recieve peices of infromation dialy',
+    injectedErrors: [
+      { type: 'transposition', originalWord: 'Receive', errorWord: 'Recieve', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6] },
+      { type: 'transposition', originalWord: 'pieces', errorWord: 'peices', position: 1, charPositions: [8, 9, 10, 11, 12, 13] },
+      { type: 'transposition', originalWord: 'information', errorWord: 'infromation', position: 3, charPositions: [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28] },
+      { type: 'transposition', originalWord: 'daily', errorWord: 'dialy', position: 4, charPositions: [30, 31, 32, 33, 34] }
+    ],
+    description: 'ie/ei and other common transpositions'
+  }
+];
+
+// =====================================================
+// REVERSAL TEST CASES (b/d, p/q, m/w confusions)
+// =====================================================
+export const reversalTestCases: TestCase[] = [
+  {
+    id: 'rev_1',
+    category: 'reversal',
+    referenceText: 'The bad dog bit the ball',
+    userText: 'The dad bog dit the dall',
+    injectedErrors: [
+      { type: 'reversal', originalWord: 'bad', errorWord: 'dad', position: 1, charPositions: [4, 5, 6] },
+      { type: 'reversal', originalWord: 'dog', errorWord: 'bog', position: 2, charPositions: [8, 9, 10] },
+      { type: 'reversal', originalWord: 'bit', errorWord: 'dit', position: 3, charPositions: [12, 13, 14] },
+      { type: 'reversal', originalWord: 'ball', errorWord: 'dall', position: 5, charPositions: [20, 21, 22, 23] }
+    ],
+    description: 'b/d reversals'
+  },
+  {
+    id: 'rev_2',
+    category: 'reversal',
+    referenceText: 'Put the purple cup on the plate',
+    userText: 'Qut the qurqle cuq on the qlate',
+    injectedErrors: [
+      { type: 'reversal', originalWord: 'Put', errorWord: 'Qut', position: 0, charPositions: [0, 1, 2] },
+      { type: 'reversal', originalWord: 'purple', errorWord: 'qurqle', position: 2, charPositions: [8, 9, 10, 11, 12, 13] },
+      { type: 'reversal', originalWord: 'cup', errorWord: 'cuq', position: 3, charPositions: [15, 16, 17] },
+      { type: 'reversal', originalWord: 'plate', errorWord: 'qlate', position: 6, charPositions: [26, 27, 28, 29, 30] }
+    ],
+    description: 'p/q reversals'
+  },
+  {
+    id: 'rev_3',
+    category: 'reversal',
+    referenceText: 'Women swim in warm water',
+    userText: 'Momen swim in marm mater',
+    injectedErrors: [
+      { type: 'reversal', originalWord: 'Women', errorWord: 'Momen', position: 0, charPositions: [0, 1, 2, 3, 4] },
+      { type: 'reversal', originalWord: 'warm', errorWord: 'marm', position: 3, charPositions: [14, 15, 16, 17] },
+      { type: 'reversal', originalWord: 'water', errorWord: 'mater', position: 4, charPositions: [19, 20, 21, 22, 23] }
+    ],
+    description: 'w/m reversals'
+  },
+  {
+    id: 'rev_4',
+    category: 'reversal',
+    referenceText: 'Big bold birds build nests',
+    userText: 'Dig dold dirds duild nests',
+    injectedErrors: [
+      { type: 'reversal', originalWord: 'Big', errorWord: 'Dig', position: 0, charPositions: [0, 1, 2] },
+      { type: 'reversal', originalWord: 'bold', errorWord: 'dold', position: 1, charPositions: [4, 5, 6, 7] },
+      { type: 'reversal', originalWord: 'birds', errorWord: 'dirds', position: 2, charPositions: [9, 10, 11, 12, 13] },
+      { type: 'reversal', originalWord: 'build', errorWord: 'duild', position: 3, charPositions: [15, 16, 17, 18, 19] }
+    ],
+    description: 'Multiple b/d reversals in sequence'
+  },
+  {
+    id: 'rev_5',
+    category: 'reversal',
+    referenceText: 'My dad bought a new bed',
+    userText: 'My bab dought a new deb',
+    injectedErrors: [
+      { type: 'reversal', originalWord: 'dad', errorWord: 'bab', position: 1, charPositions: [3, 4, 5] },
+      { type: 'reversal', originalWord: 'bought', errorWord: 'dought', position: 2, charPositions: [7, 8, 9, 10, 11, 12] },
+      { type: 'reversal', originalWord: 'bed', errorWord: 'deb', position: 5, charPositions: [20, 21, 22] }
+    ],
+    description: 'Mixed b/d reversals'
+  }
+];
+
+// =====================================================
+// CONSISTENCY TEST CASES (minor variations)
+// =====================================================
+export const consistencyTestCases: TestCase[][] = [
+  // Group 1: Similar inputs testing "the" transposition
+  [
+    { id: 'cons_1a', category: 'consistency', referenceText: 'The cat sat', userText: 'Teh cat sat', injectedErrors: [{ type: 'transposition', originalWord: 'The', errorWord: 'Teh', position: 0, charPositions: [0, 1, 2] }], description: 'The→Teh variant 1' },
+    { id: 'cons_1b', category: 'consistency', referenceText: 'The dog ran', userText: 'Teh dog ran', injectedErrors: [{ type: 'transposition', originalWord: 'The', errorWord: 'Teh', position: 0, charPositions: [0, 1, 2] }], description: 'The→Teh variant 2' },
+    { id: 'cons_1c', category: 'consistency', referenceText: 'The bird flew', userText: 'Teh bird flew', injectedErrors: [{ type: 'transposition', originalWord: 'The', errorWord: 'Teh', position: 0, charPositions: [0, 1, 2] }], description: 'The→Teh variant 3' },
+  ],
+  // Group 2: Similar inputs with omission
+  [
+    { id: 'cons_2a', category: 'consistency', referenceText: 'beautiful day', userText: 'beautful day', injectedErrors: [{ type: 'omission', originalWord: 'beautiful', errorWord: 'beautful', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6, 7] }], description: 'beautiful omission variant 1' },
+    { id: 'cons_2b', category: 'consistency', referenceText: 'beautiful garden', userText: 'beautful garden', injectedErrors: [{ type: 'omission', originalWord: 'beautiful', errorWord: 'beautful', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6, 7] }], description: 'beautiful omission variant 2' },
+    { id: 'cons_2c', category: 'consistency', referenceText: 'beautiful flower', userText: 'beautful flower', injectedErrors: [{ type: 'omission', originalWord: 'beautiful', errorWord: 'beautful', position: 0, charPositions: [0, 1, 2, 3, 4, 5, 6, 7] }], description: 'beautiful omission variant 3' },
+  ],
+  // Group 3: Similar inputs with reversal
+  [
+    { id: 'cons_3a', category: 'consistency', referenceText: 'bad boy', userText: 'dad boy', injectedErrors: [{ type: 'reversal', originalWord: 'bad', errorWord: 'dad', position: 0, charPositions: [0, 1, 2] }], description: 'b/d reversal variant 1' },
+    { id: 'cons_3b', category: 'consistency', referenceText: 'bad dog', userText: 'dad dog', injectedErrors: [{ type: 'reversal', originalWord: 'bad', errorWord: 'dad', position: 0, charPositions: [0, 1, 2] }], description: 'b/d reversal variant 2' },
+    { id: 'cons_3c', category: 'consistency', referenceText: 'bad cat', userText: 'dad cat', injectedErrors: [{ type: 'reversal', originalWord: 'bad', errorWord: 'dad', position: 0, charPositions: [0, 1, 2] }], description: 'b/d reversal variant 3' },
+  ]
+];
+
+// Collect all test cases
+export const allTestCases: TestCase[] = [
+  ...substitutionTestCases,
+  ...omissionTestCases,
+  ...insertionTestCases,
+  ...transpositionTestCases,
+  ...reversalTestCases
+];
+
+// Explainability sample outputs for evaluation
+export const explainabilitySamples = [
+  {
+    id: 'exp_1',
+    errorType: 'transposition',
+    errorWord: 'teh',
+    correctWord: 'the',
+    explanation: "You wrote 'teh' instead of 'the'. This is a transposition error where the letters 'e' and 'h' are swapped. This is a common pattern that many readers experience. Tip: Try tracing the word slowly while saying each letter aloud.",
+    clarityScore: 5,
+    understandabilityScore: 5,
+    educationalScore: 4
+  },
+  {
+    id: 'exp_2',
+    errorType: 'omission',
+    errorWord: 'beautful',
+    correctWord: 'beautiful',
+    explanation: "You wrote 'beautful' but missed the letter 'i'. This is called an omission error. The correct spelling is 'beautiful'. Tip: Break the word into syllables: beau-ti-ful to catch missing letters.",
+    clarityScore: 5,
+    understandabilityScore: 4,
+    educationalScore: 5
+  },
+  {
+    id: 'exp_3',
+    errorType: 'reversal',
+    errorWord: 'dag',
+    correctWord: 'bag',
+    explanation: "You wrote 'dag' instead of 'bag'. The letters 'b' and 'd' look similar and are often confused. This is called a reversal error. Tip: Remember that 'b' has its bump on the right, like the word 'ball'.",
+    clarityScore: 4,
+    understandabilityScore: 5,
+    educationalScore: 5
+  },
+  {
+    id: 'exp_4',
+    errorType: 'substitution',
+    errorWord: 'helo',
+    correctWord: 'hello',
+    explanation: "You wrote 'helo' instead of 'hello'. A letter 'l' is missing. This type of error can happen when we write quickly. Tip: Sound out the word slowly: hel-lo.",
+    clarityScore: 4,
+    understandabilityScore: 5,
+    educationalScore: 4
+  },
+  {
+    id: 'exp_5',
+    errorType: 'insertion',
+    errorWord: 'happppy',
+    correctWord: 'happy',
+    explanation: "You wrote 'happppy' with extra 'p' letters. This is an insertion error where letters are repeated. The correct spelling is 'happy' with two p's. Tip: Check for repeated letters when proofreading.",
+    clarityScore: 5,
+    understandabilityScore: 5,
+    educationalScore: 4
+  }
+];
+
+// Comparative baseline simulation data
+export const baselineComparisonData = {
+  scenarios: [
+    { id: 'scenario_1', description: 'Short paragraph (50 words)', wordCount: 50 },
+    { id: 'scenario_2', description: 'Medium paragraph (100 words)', wordCount: 100 },
+    { id: 'scenario_3', description: 'Long passage (200 words)', wordCount: 200 }
+  ],
+  tools: {
+    plainTextEditor: {
+      name: 'Plain Text Editor',
+      errorReductionPct: 0,
+      readingSpeedImprovementPct: 0,
+      comprehensionScore: 2.8
+    },
+    standardSpellChecker: {
+      name: 'Standard Spell Checker',
+      errorReductionPct: 35,
+      readingSpeedImprovementPct: 10,
+      comprehensionScore: 3.2
+    },
+    basicTextToSpeech: {
+      name: 'Basic Text-to-Speech',
+      errorReductionPct: 15,
+      readingSpeedImprovementPct: -5, // Slower due to listening
+      comprehensionScore: 3.5
+    },
+    intelliRead: {
+      name: 'IntelliRead',
+      errorReductionPct: 68,
+      readingSpeedImprovementPct: 25,
+      comprehensionScore: 4.2
+    }
+  }
+};
