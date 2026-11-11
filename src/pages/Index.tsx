@@ -142,7 +142,7 @@ const Index = () => {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Brain className="w-8 h-8 text-primary" />
+              <img src="/favicon.svg" alt="IntelliRead logo" className="w-9 h-9" />
               <div>
                 <h1 className="text-2xl font-bold text-foreground">IntelliRead</h1>
                 <p className="text-sm text-muted-foreground">Empowering Dyslexic Readers through AI</p>
