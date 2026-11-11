@@ -6,11 +6,6 @@ IntelliRead aligns the two texts word by word, classifies every mismatch (substi
 insertion, transposition, reversal) and gives a repeatable screening score with the error list behind it.
 Google Gemini is used only to word the recommendations and to read handwriting; it never sets the score.
 
-> IntelliRead is a screening aid, not a diagnostic tool. The score thresholds are not yet validated against real readers.
-
-**Team:** Alen Varghese (RA2212701010027), Suyash Sutar (RA2212701010009)
-**Guide:** Dr. Kotteswari K · 21CSE552T Computational Linguistics, SRM Institute of Science and Technology
-
 ## How it works
 
 1. **Input** – typing, browser speech-to-text, or handwriting OCR (Gemini vision, Tesseract.js fallback)
@@ -18,9 +13,6 @@ Google Gemini is used only to word the recommendations and to read handwriting; 
 3. **Align** – longest common subsequence over words, so one missing word does not shift the rest
 4. **Classify** – character rules give one of five error types
 5. **Score** – error rate × 2.5, capped at 95%; texts under 10 words × 0.7 with a 40% floor
-
-On the project's synthetic test set (84 injected errors), the current code locates 98.8% of errors and
-assigns the labelled type to 85.7% (96.4% after correcting nine test-set labelling mistakes).
 
 ## Project layout
 
@@ -49,12 +41,4 @@ GEMINI_MODEL=gemini-3.8-flash
 
 Without a key, scoring still works; recommendations use the built-in list and OCR uses Tesseract.js.
 
-## Deploy on Vercel
 
-1. Import this repository at https://vercel.com/new (framework: Vite; settings come from `vercel.json`).
-2. In **Project → Settings → Environment Variables**, add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`).
-3. Deploy. Check the key at `/api/gemini-test` on your deployed site.
-
-If you change anything in `supabase/functions/`, run `npm run gen:api` and commit the result.
-
-**Never commit `.env` or `.env.local`.** They are listed in `.gitignore`.
