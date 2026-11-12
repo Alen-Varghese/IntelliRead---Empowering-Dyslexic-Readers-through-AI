@@ -11,7 +11,7 @@ import { TextToSpeech } from "@/components/TextToSpeech";
 import { SpeechToText } from "@/components/SpeechToText";
 import { ConfidenceGauge } from "@/components/ConfidenceGauge";
 import { ImageUpload } from "@/components/ImageUpload";
-import { analyzeText, AnalysisResult } from "@/lib/analyzeText";
+import { analyzeText, AnalysisResult, ReferenceIssue, applyReferenceFixes } from "@/lib/analyzeText";
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -67,10 +67,19 @@ const Index = () => {
   };
 
   // Applies the suggested reference fixes, then checks the learner's text again.
+  // Chosen correction for each suspect reference word (position -> word); defaults to the top suggestion.
+  const [chosenFixes, setChosenFixes] = useState<Record<number, string>>({});
+  useEffect(() => { setChosenFixes({}); }, [result]);
+  const fixFor = (issue: ReferenceIssue) => chosenFixes[issue.raw] ?? issue.suggestion;
+
   const handleFixReference = () => {
-    if (!result?.correctedReference) return;
-    setReferenceText(result.correctedReference);
-    handleAnalyze(result.correctedReference);
+    if (!result?.referenceIssues) return;
+    const fixes = new Map<number, string>();
+    for (const issue of result.referenceIssues) if (fixFor(issue)) fixes.set(issue.raw, fixFor(issue));
+    if (fixes.size === 0) return;
+    const corrected = applyReferenceFixes(referenceText, fixes);
+    setReferenceText(corrected);
+    handleAnalyze(corrected);
   };
 
   const handleDemoText = () => {
@@ -371,18 +380,34 @@ const Index = () => {
                         {issue.reason === 'not-a-word' && issue.learner === issue.reference
                           ? <>"{issue.reference}" is not an English word. The learner copied it as written, so it is not counted, but the reference should be corrected.</>
                           : issue.reason === 'not-a-word'
-                          ? (issue.suggestion
-                              ? <>"{issue.reference}" is not an English word, so this is <span className="font-semibold">not counted</span> against the learner.</>
-                              : <>Neither word is English. This is still counted as a learner error; please check the reference word.</>)
+                          ? (issue.counted
+                              ? <>Neither word is English. This is still counted as a learner error until the reference is corrected.</>
+                              : <>"{issue.reference}" is not an English word, so this is <span className="font-semibold">not counted</span> against the learner.</>)
                           : <>In this sentence "{issue.suggestion}" fits better (Gemini context check). Still counted until you fix the reference.</>}
+                        {[issue.suggestion, ...(issue.alternatives ?? [])].filter(Boolean).length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <span className="text-sm text-muted-foreground">Correct word:</span>
+                            {[issue.suggestion, ...(issue.alternatives ?? [])].filter(Boolean).map((word) => (
+                              <Button
+                                key={word}
+                                size="sm"
+                                variant={fixFor(issue) === word ? "default" : "outline"}
+                                onClick={() => setChosenFixes((c) => ({ ...c, [issue.raw]: word }))}
+                                aria-pressed={fixFor(issue) === word}
+                              >
+                                {word}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
-                {result.correctedReference && (
+                {result.referenceIssues?.some((issue) => fixFor(issue)) && (
                   <Button onClick={handleFixReference} disabled={isAnalyzing} className="gradient-primary">
                     <Check className="w-4 h-4 mr-2" />
-                    Fix reference text and re-check
+                    Apply corrections to reference text and re-check
                   </Button>
                 )}
                 {result.contextCheck === 'failed' && (

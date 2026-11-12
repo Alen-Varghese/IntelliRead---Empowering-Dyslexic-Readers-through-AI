@@ -59,4 +59,4 @@ The learner's text is compared with the reference text, so a mistake in the refe
 - **Real words that do not fit the sentence** (for example "form" for "from"): when a Gemini key is set, Gemini is asked which word fits the sentence. It never changes the score; it only suggests a fix. This check sends both texts to Google.
 - **Wrong passage**: if fewer than half of the reference words were copied exactly or nearly, the page warns that the texts may not be the same passage.
 
-The page lists these with a **Fix reference text and re-check** button, which applies the suggested fixes and scores again.
+For every wrong reference word the page offers the likely correct word, with up to three alternatives to choose from. Suggestions come from the learner's own word when it is English, otherwise from the word list ranked by: known misspellings (`autocorrect.ts`, from LibreOffice's English autocorrect list, MPL-2.0), words used elsewhere in the two texts, everyday words, and common letter confusions (m/n, b/d, p/q). The **Apply corrections to reference text and re-check** button applies the chosen words and scores again.

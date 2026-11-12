@@ -10,6 +10,7 @@ const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const LABELS = ['Normal', 'Mild', 'Moderate', 'Severe', 'Inconclusive'];
 
 import { ENGLISH_WORDS } from './english-words.ts';
+import { AUTOCORRECT } from './autocorrect.ts';
 
 type Item = { orig: string; norm: string; raw: number };
 type Annotation = { word: string; type: string; suggestion: string };
@@ -18,10 +19,82 @@ type ReferenceIssue = {
   reference: string;      // the word as written in the reference text
   learner: string;        // what the learner wrote at that place
   suggestion: string;     // proposed replacement for the reference word ('' = none)
+  alternatives?: string[]; // other likely corrections, best first
   reason: 'not-a-word' | 'context';
   counted: boolean;       // still counted as a learner error in the score?
   raw: number;            // position among the reference's whitespace-separated tokens
 };
+
+// ---------- Dictionary check and spelling suggestions (deterministic) ----------
+
+// Letter pairs that are commonly confused when typing or with dyslexia; a correction
+// that only swaps one of these is ranked first (amd -> and, s0ur -> sour).
+const CONFUSABLE = new Set(['mn', 'nm', 'bd', 'db', 'pq', 'qp', 'un', 'nu', 'il', 'li', 'ec', 'ce', 'ao', 'oa', '0o', 'o0', '1l', 'l1', '1i', 'i1', 'mw', 'wm', 'vw', 'wv']);
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+
+// All strings one edit away (delete, swap neighbours, change, insert), with how many
+// of the changes were a confusable letter pair.
+function edits1(w: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const add = (x: string, conf: number) => { if (!out.has(x) || out.get(x)! < conf) out.set(x, conf); };
+  for (let i = 0; i <= w.length; i++) {
+    const a = w.slice(0, i), b = w.slice(i);
+    if (b) add(a + b.slice(1), 0);                                      // delete
+    if (b.length > 1) add(a + b[1] + b[0] + b.slice(2), 1);             // swap neighbours
+    for (const c of LETTERS) {
+      if (b) add(a + c + b.slice(1), CONFUSABLE.has(b[0] + c) ? 2 : 0); // change
+      add(a + c + b, 0);                                                // insert
+    }
+  }
+  return out;
+}
+
+let FIXES: Map<string, string> | null = null;   // known misspelling -> correction
+let COMMON: Set<string> | null = null;          // the corrections: everyday words
+function loadFixes() {
+  if (FIXES) return;
+  FIXES = new Map(AUTOCORRECT.split('\n').map((l) => l.split('\t') as [string, string]));
+  COMMON = new Set(FIXES.values());
+}
+
+// Up to 4 dictionary words close to a misspelled word, best first. A known misspelling
+// gets its known correction first. Then: fewest edits, words used elsewhere in the two
+// texts, everyday words, confusable-letter fixes, same first letter, closest length.
+function suggestCorrections(word: string, contextWords: Set<string> = new Set()): string[] {
+  const w = word.toLowerCase();
+  if (!WORDS) WORDS = new Set(ENGLISH_WORDS.split('\n'));
+  loadFixes();
+  // Collapsing runs of a repeated letter (accccurate -> accurate) counts as one edit.
+  const starts = new Map<string, number>([[w, 0]]);
+  for (const v of [w.replace(/(.)\1{2,}/g, '$1$1'), w.replace(/(.)\1+/g, '$1')]) if (v !== w) starts.set(v, 1);
+  const found = new Map<string, { cost: number; conf: number }>();
+  const note = (x: string, cost: number, conf: number) => {
+    if (x.length < 1 || !WORDS!.has(x)) return;
+    const prev = found.get(x);
+    if (!prev || cost < prev.cost || (cost === prev.cost && conf > prev.conf)) found.set(x, { cost, conf });
+  };
+  for (const [s0, c0] of starts) {
+    note(s0, c0, 0);
+    if (c0 + 1 > 2) continue;
+    for (const [s1, k1] of edits1(s0)) {
+      note(s1, c0 + 1, k1);
+      if (c0 + 2 <= 2 && w.length <= 14) for (const [s2, k2] of edits1(s1)) note(s2, c0 + 2, k1 + k2);
+    }
+  }
+  const known = FIXES!.get(w);
+  if (known && WORDS!.has(known)) found.set(known, { cost: -1, conf: 0 });
+  const bonus = (x: string) => Number(contextWords.has(x)) * 2 + Number(COMMON!.has(x));
+  return [...found.entries()]
+    .sort(([a, x], [b, y]) => x.cost - y.cost || bonus(b) - bonus(a) || y.conf - x.conf
+      || Number(b[0] === w[0]) - Number(a[0] === w[0])
+      || Math.abs(a.length - w.length) - Math.abs(b.length - w.length) || a.localeCompare(b))
+    .slice(0, 4).map(([x]) => x);
+}
+
+function withSuggestions(norm: string, contextWords?: Set<string>): { suggestion: string; alternatives: string[] } {
+  const list = suggestCorrections(norm, contextWords);
+  return { suggestion: list[0] ?? '', alternatives: list.slice(1) };
+}
 
 // ---------- Dictionary check (deterministic) ----------
 
@@ -136,6 +209,8 @@ function alignWords(ref: Item[], typed: Item[]): Array<{ expected?: Item; typed?
 function scoreAgainstReference(referenceText: string, typedText: string) {
   const ref = toItems(referenceText);
   const typed = toItems(typedText);
+  // English words used anywhere in the two texts: a likely correction for a misspelling.
+  const contextWords = new Set([...ref, ...typed].map((x) => x.norm).filter((x) => isEnglishWord(x)));
   const annotations: Annotation[] = [];
   const referenceIssues: ReferenceIssue[] = [];
   // Real-word pairs ("form" vs "from"): the dictionary cannot say which side is wrong,
@@ -151,6 +226,7 @@ function scoreAgainstReference(referenceText: string, typedText: string) {
         // The reference word is not English but the learner's word is: most likely a typo
         // in the reference, so it is not held against the learner.
         referenceIssues.push({ reference: pair.expected.orig, learner: pair.typed.orig, suggestion: pair.typed.norm,
+          alternatives: suggestCorrections(pair.expected.norm, contextWords).filter((x) => x !== pair.typed!.norm).slice(0, 3),
           reason: 'not-a-word', counted: false, raw: pair.expected.raw });
         continue;
       }
@@ -158,7 +234,7 @@ function scoreAgainstReference(referenceText: string, typedText: string) {
       annotations.push(annotation);
       if (!refOk) {
         // Neither word is English: still a learner error, but the reference needs checking too.
-        referenceIssues.push({ reference: pair.expected.orig, learner: pair.typed.orig, suggestion: '',
+        referenceIssues.push({ reference: pair.expected.orig, learner: pair.typed.orig, ...withSuggestions(pair.expected.norm, contextWords),
           reason: 'not-a-word', counted: true, raw: pair.expected.raw });
       } else if (typedOk) {
         contextCandidates.push({ expected: pair.expected, typed: pair.typed, annotation });
@@ -179,7 +255,7 @@ function scoreAgainstReference(referenceText: string, typedText: string) {
   const listed = new Set(pairs.filter((p) => p.expected).map((p) => p.expected!.raw));
   for (const item of ref) {
     if (!listed.has(item.raw) && !isEnglishWord(item.norm)) {
-      referenceIssues.push({ reference: item.orig, learner: item.orig, suggestion: '', reason: 'not-a-word', counted: false, raw: item.raw });
+      referenceIssues.push({ reference: item.orig, learner: item.orig, ...withSuggestions(item.norm, contextWords), reason: 'not-a-word', counted: false, raw: item.raw });
     }
   }
   const near = pairs.filter((p) => p.expected && p.typed && isSimilar(p.expected.norm, p.typed.norm)).length;
@@ -401,7 +477,7 @@ serve(async (req) => {
       engine: usedReference ? 'rule-based' : 'pattern-match',
       recommendationsSource,
       ...(fallbackReason ? { fallbackReason } : {}),
-      referenceIssues: referenceIssues.map(({ raw: _raw, ...rest }) => rest),
+      referenceIssues,
       ...(correctedReference ? { correctedReference } : {}),
       referenceMismatch,
       contextCheck,
