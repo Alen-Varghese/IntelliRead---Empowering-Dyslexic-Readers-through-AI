@@ -368,7 +368,9 @@ const Index = () => {
                       <li key={idx} className="text-foreground">
                         Reference has <span className="font-semibold">"{issue.reference}"</span>, learner wrote{' '}
                         <span className="font-semibold">"{issue.learner}"</span>.{' '}
-                        {issue.reason === 'not-a-word'
+                        {issue.reason === 'not-a-word' && issue.learner === issue.reference
+                          ? <>"{issue.reference}" is not an English word. The learner copied it as written, so it is not counted, but the reference should be corrected.</>
+                          : issue.reason === 'not-a-word'
                           ? (issue.suggestion
                               ? <>"{issue.reference}" is not an English word, so this is <span className="font-semibold">not counted</span> against the learner.</>
                               : <>Neither word is English. This is still counted as a learner error; please check the reference word.</>)

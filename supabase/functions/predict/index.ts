@@ -28,7 +28,7 @@ type ReferenceIssue = {
 let WORDS: Set<string> | null = null;
 function isEnglishWord(norm: string): boolean {
   if (!WORDS) WORDS = new Set(ENGLISH_WORDS.split('\n'));
-  if (/\d/.test(norm)) return true;                           // numbers, "3rd", "2026"
+  if (/^\d+(st|nd|rd|th|s)?$/.test(norm) || /^\d[\d.,:/-]*\d$/.test(norm)) return true; // 2026, 3rd, 1990s, 10:30
   const w = norm.replace(/’/g, "'");
   if (WORDS.has(w)) return true;
   if (w.endsWith("'s") && WORDS.has(w.slice(0, -2))) return true;   // possessives
@@ -93,30 +93,42 @@ function classifyError(expected: string, typed: string): string {
   return 'substitution';
 }
 
-// Lines up typed words with reference words in order (longest common subsequence),
-// so one missing or extra word does not shift every word after it.
+// Lines up typed words with reference words in order (global sequence alignment).
+// Exact matches score highest, and a misspelling ("abd" for "and") is preferred over
+// unrelated words, so a repeated word such as "and" cannot pull the alignment out of
+// place and one missing or extra word does not shift every word after it.
+// Returns only the words that differ: pairs, missing reference words, or extra typed words.
+const ALIGN = { exact: 3, similar: 1, other: -1, gap: -1 };
+function isSimilar(a: string, b: string): boolean {
+  return editDistance(a, b) <= Math.max(1, Math.floor(Math.max(a.length, b.length) / 2));
+}
 function alignWords(ref: Item[], typed: Item[]): Array<{ expected?: Item; typed?: Item }> {
   const n = ref.length, m = typed.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      dp[i][j] = ref[i].norm === typed[j].norm ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  const matches: Array<[number, number]> = [];
-  let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (ref[i].norm === typed[j].norm) { matches.push([i, j]); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
-    else j++;
-  }
+  const pairScore = (i: number, j: number) =>
+    ref[i].norm === typed[j].norm ? ALIGN.exact : isSimilar(ref[i].norm, typed[j].norm) ? ALIGN.similar : ALIGN.other;
+  // best[i][j] = best score for aligning ref[i..] with typed[j..]
+  const best: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n; i >= 0; i--)
+    for (let j = m; j >= 0; j--) {
+      if (i === n && j === m) continue;
+      let v = -Infinity;
+      if (i < n && j < m) v = Math.max(v, pairScore(i, j) + best[i + 1][j + 1]);
+      if (i < n) v = Math.max(v, ALIGN.gap + best[i + 1][j]);
+      if (j < m) v = Math.max(v, ALIGN.gap + best[i][j + 1]);
+      best[i][j] = v;
+    }
   const out: Array<{ expected?: Item; typed?: Item }> = [];
-  let ri = 0, ti = 0;
-  for (const [mi, mj] of [...matches, [n, m] as [number, number]]) {
-    const refGap = ref.slice(ri, mi), typGap = typed.slice(ti, mj);
-    const k = Math.min(refGap.length, typGap.length);
-    for (let x = 0; x < k; x++) out.push({ expected: refGap[x], typed: typGap[x] });
-    for (let x = k; x < refGap.length; x++) out.push({ expected: refGap[x] });
-    for (let x = k; x < typGap.length; x++) out.push({ typed: typGap[x] });
-    ri = mi + 1; ti = mj + 1;
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    // Fixed preference order on ties (pair, then missing, then extra) keeps results repeatable.
+    if (i < n && j < m && best[i][j] === pairScore(i, j) + best[i + 1][j + 1]) {
+      if (ref[i].norm !== typed[j].norm) out.push({ expected: ref[i], typed: typed[j] });
+      i++; j++;
+    } else if (i < n && best[i][j] === ALIGN.gap + best[i + 1][j]) {
+      out.push({ expected: ref[i] }); i++;
+    } else {
+      out.push({ typed: typed[j] }); j++;
+    }
   }
   return out;
 }
@@ -162,8 +174,15 @@ function scoreAgainstReference(referenceText: string, typedText: string) {
   // alignWords lists only the unmatched words, so exact matches = reference words not listed.
   const pairs = alignWords(ref, typed);
   matched = ref.length - pairs.filter((p) => p.expected).length;
-  const near = pairs.filter((p) => p.expected && p.typed &&
-    editDistance(p.expected.norm, p.typed.norm) <= Math.max(1, Math.floor(Math.max(p.expected.norm.length, p.typed.norm.length) / 2))).length;
+  // Reference words that are not English but were copied exactly: no learner error,
+  // yet the reference still needs fixing (the learner copied the teacher's typo).
+  const listed = new Set(pairs.filter((p) => p.expected).map((p) => p.expected!.raw));
+  for (const item of ref) {
+    if (!listed.has(item.raw) && !isEnglishWord(item.norm)) {
+      referenceIssues.push({ reference: item.orig, learner: item.orig, suggestion: '', reason: 'not-a-word', counted: false, raw: item.raw });
+    }
+  }
+  const near = pairs.filter((p) => p.expected && p.typed && isSimilar(p.expected.norm, p.typed.norm)).length;
   const referenceMismatch = ref.length >= 4 && (matched + near) / ref.length < 0.5;
   return { annotations, totalWords: ref.length, referenceIssues, contextCandidates, referenceMismatch };
 }
