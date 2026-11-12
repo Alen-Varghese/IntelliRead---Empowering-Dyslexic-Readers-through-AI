@@ -27,8 +27,9 @@ const Index = () => {
   const [letterSpacing, setLetterSpacing] = useState(0);
   const { toast } = useToast();
 
-  const handleAnalyze = async () => {
-    if (!referenceText.trim() || referenceText.trim().length < 30) {
+  const handleAnalyze = async (referenceOverride?: string) => {
+    const reference = typeof referenceOverride === 'string' ? referenceOverride : referenceText;
+    if (!reference.trim() || reference.trim().length < 30) {
       toast({
         title: "Reference Text Required",
         description: "Please enter reference text (at least 30 characters).",
@@ -50,7 +51,7 @@ const Index = () => {
     setShowResults(false);
     
     try {
-      const analysisResult = await analyzeText(userText, 'guest', referenceText);
+      const analysisResult = await analyzeText(userText, 'guest', reference);
       setResult(analysisResult);
       setShowResults(true);
     } catch (error) {
@@ -63,6 +64,13 @@ const Index = () => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  // Applies the suggested reference fixes, then checks the learner's text again.
+  const handleFixReference = () => {
+    if (!result?.correctedReference) return;
+    setReferenceText(result.correctedReference);
+    handleAnalyze(result.correctedReference);
   };
 
   const handleDemoText = () => {
@@ -276,7 +284,7 @@ const Index = () => {
           </div>
           
           <Button
-            onClick={handleAnalyze}
+            onClick={() => handleAnalyze()}
             disabled={!referenceText.trim() || !userText.trim() || referenceText.trim().length < 30 || userText.trim().length < 20 || isAnalyzing}
             className="w-full mt-6 h-12 text-lg font-semibold gradient-primary hover:shadow-glow transition-smooth"
             size="lg"
@@ -339,6 +347,49 @@ const Index = () => {
                 <ConfidenceGauge confidence={Math.round(result.probability * 100)} />
               )}
             </Card>
+
+            {/* Reference checks: wrong passage, or words in the reference that look wrong */}
+            {(result.referenceMismatch || (result.referenceIssues && result.referenceIssues.length > 0)) && (
+              <Card className="p-6 shadow-card border-2 border-amber-400 bg-amber-50 dark:bg-amber-950/20">
+                <h3 className="text-xl font-bold mb-3 text-foreground flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                  Check the reference text
+                </h3>
+                {result.referenceMismatch && (
+                  <p className="text-foreground mb-3">
+                    These two texts do not look like the same passage: fewer than half of the reference words were copied,
+                    even allowing for spelling mistakes. Check that the reference text is the passage the learner copied.
+                    The score below is probably not meaningful.
+                  </p>
+                )}
+                {result.referenceIssues && result.referenceIssues.length > 0 && (
+                  <ul className="space-y-2 mb-4">
+                    {result.referenceIssues.map((issue, idx) => (
+                      <li key={idx} className="text-foreground">
+                        Reference has <span className="font-semibold">"{issue.reference}"</span>, learner wrote{' '}
+                        <span className="font-semibold">"{issue.learner}"</span>.{' '}
+                        {issue.reason === 'not-a-word'
+                          ? (issue.suggestion
+                              ? <>"{issue.reference}" is not an English word, so this is <span className="font-semibold">not counted</span> against the learner.</>
+                              : <>Neither word is English. This is still counted as a learner error; please check the reference word.</>)
+                          : <>In this sentence "{issue.suggestion}" fits better (Gemini context check). Still counted until you fix the reference.</>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {result.correctedReference && (
+                  <Button onClick={handleFixReference} disabled={isAnalyzing} className="gradient-primary">
+                    <Check className="w-4 h-4 mr-2" />
+                    Fix reference text and re-check
+                  </Button>
+                )}
+                {result.contextCheck === 'failed' && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    The sentence-context check could not run ({result.contextCheckError}); only misspelled reference words were checked.
+                  </p>
+                )}
+              </Card>
+            )}
 
             {/* Annotations */}
             {result.annotations && result.annotations.length > 0 && (

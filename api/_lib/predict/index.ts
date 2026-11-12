@@ -10,8 +10,32 @@ const corsHeaders = {
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 const LABELS = ['Normal', 'Mild', 'Moderate', 'Severe', 'Inconclusive'];
 
-type Item = { orig: string; norm: string };
+import { ENGLISH_WORDS } from './english-words.js';
+
+type Item = { orig: string; norm: string; raw: number };
 type Annotation = { word: string; type: string; suggestion: string };
+// A word in the REFERENCE text that is probably wrong, rather than the learner's word.
+type ReferenceIssue = {
+  reference: string;      // the word as written in the reference text
+  learner: string;        // what the learner wrote at that place
+  suggestion: string;     // proposed replacement for the reference word ('' = none)
+  reason: 'not-a-word' | 'context';
+  counted: boolean;       // still counted as a learner error in the score?
+  raw: number;            // position among the reference's whitespace-separated tokens
+};
+
+// ---------- Dictionary check (deterministic) ----------
+
+let WORDS: Set<string> | null = null;
+function isEnglishWord(norm: string): boolean {
+  if (!WORDS) WORDS = new Set(ENGLISH_WORDS.split('\n'));
+  if (/\d/.test(norm)) return true;                           // numbers, "3rd", "2026"
+  const w = norm.replace(/’/g, "'");
+  if (WORDS.has(w)) return true;
+  if (w.endsWith("'s") && WORDS.has(w.slice(0, -2))) return true;   // possessives
+  if (w.includes('-')) return w.split('-').every((p) => p === '' || WORDS!.has(p)); // well-known
+  return false;
+}
 
 // ---------- Scoring: rule-based, deterministic ----------
 
@@ -22,8 +46,35 @@ function normalizeWord(w: string): string {
 
 function toItems(text: string): Item[] {
   return text.trim().split(/\s+/).filter(Boolean)
-    .map((orig) => ({ orig, norm: normalizeWord(orig) }))
+    .map((orig, raw) => ({ orig, norm: normalizeWord(orig), raw }))
     .filter((x) => x.norm.length > 0);
+}
+
+// Replaces whole reference tokens by position, keeping spacing, line breaks and edge punctuation.
+function applyReferenceFixes(referenceText: string, issues: ReferenceIssue[]): string {
+  const fixes = new Map(issues.filter((x) => x.suggestion).map((x) => [x.raw, x.suggestion]));
+  let k = -1;
+  return referenceText.split(/(\s+)/).map((part) => {
+    if (!part || /^\s+$/.test(part)) return part;
+    k++;
+    const fix = fixes.get(k);
+    if (!fix) return part;
+    const m = part.match(/^([^\p{L}\p{N}']*)(.*?)([^\p{L}\p{N}']*)$/u)!;
+    const core = /^\p{Lu}/u.test(m[2]) ? fix.charAt(0).toUpperCase() + fix.slice(1) : fix;
+    return m[1] + core + m[3];
+  }).join('');
+}
+
+// Number of single-letter edits (insert, delete, change) between two words.
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++)
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
 }
 
 const REVERSALS = new Set(['bd', 'db', 'pq', 'qp', 'mw', 'wm']);
@@ -75,16 +126,83 @@ function scoreAgainstReference(referenceText: string, typedText: string) {
   const ref = toItems(referenceText);
   const typed = toItems(typedText);
   const annotations: Annotation[] = [];
+  const referenceIssues: ReferenceIssue[] = [];
+  // Real-word pairs ("form" vs "from"): the dictionary cannot say which side is wrong,
+  // so they are offered to the optional sentence-context check.
+  const contextCandidates: Array<{ expected: Item; typed: Item; annotation: Annotation }> = [];
+  let matched = 0;
   for (const pair of alignWords(ref, typed)) {
     if (pair.expected && pair.typed) {
-      annotations.push({ word: pair.typed.orig, type: classifyError(pair.expected.norm, pair.typed.norm), suggestion: pair.expected.orig });
+      if (pair.expected.norm === pair.typed.norm) { matched++; continue; }
+      const refOk = isEnglishWord(pair.expected.norm);
+      const typedOk = isEnglishWord(pair.typed.norm);
+      if (!refOk && typedOk) {
+        // The reference word is not English but the learner's word is: most likely a typo
+        // in the reference, so it is not held against the learner.
+        referenceIssues.push({ reference: pair.expected.orig, learner: pair.typed.orig, suggestion: pair.typed.norm,
+          reason: 'not-a-word', counted: false, raw: pair.expected.raw });
+        continue;
+      }
+      const annotation = { word: pair.typed.orig, type: classifyError(pair.expected.norm, pair.typed.norm), suggestion: pair.expected.orig };
+      annotations.push(annotation);
+      if (!refOk) {
+        // Neither word is English: still a learner error, but the reference needs checking too.
+        referenceIssues.push({ reference: pair.expected.orig, learner: pair.typed.orig, suggestion: '',
+          reason: 'not-a-word', counted: true, raw: pair.expected.raw });
+      } else if (typedOk) {
+        contextCandidates.push({ expected: pair.expected, typed: pair.typed, annotation });
+      }
     } else if (pair.expected) {
       annotations.push({ word: '(missing)', type: 'omission', suggestion: pair.expected.orig });
     } else if (pair.typed) {
       annotations.push({ word: pair.typed.orig, type: 'insertion', suggestion: '(extra word)' });
     }
   }
-  return { annotations, totalWords: ref.length };
+  // Probably two different passages when under half of the reference words were copied
+  // exactly or nearly (a misspelling such as "fal" for "fall" still counts as copied).
+  // alignWords lists only the unmatched words, so exact matches = reference words not listed.
+  const pairs = alignWords(ref, typed);
+  matched = ref.length - pairs.filter((p) => p.expected).length;
+  const near = pairs.filter((p) => p.expected && p.typed &&
+    editDistance(p.expected.norm, p.typed.norm) <= Math.max(1, Math.floor(Math.max(p.expected.norm.length, p.typed.norm.length) / 2))).length;
+  const referenceMismatch = ref.length >= 4 && (matched + near) / ref.length < 0.5;
+  return { annotations, totalWords: ref.length, referenceIssues, contextCandidates, referenceMismatch };
+}
+
+// Optional: asks Gemini which word fits the SENTENCE CONTEXT for real-word disagreements.
+// It never changes the score; a 'learner fits better' answer is shown as a suggested
+// reference fix for the teacher to confirm. Both texts are sent to Google for this.
+async function geminiContextCheck(referenceText: string, typedText: string,
+  candidates: Array<{ expected: Item; typed: Item }>): Promise<{ fits: string[] } | { error: string }> {
+  const list = candidates.slice(0, 10)
+    .map((c, i) => `${i}: reference word "${c.expected.orig}" vs learner word "${c.typed.orig}"`).join('\n');
+  const body = JSON.stringify({
+    model: (process.env.GEMINI_MODEL || "gemini-3.8-flash"),
+    temperature: 0,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You check a REFERENCE passage that a teacher typed for a reading test. A learner copied it. For each numbered pair, decide which word is correct English in the sentence where it appears: "reference" if the reference word fits the sentence, "learner" ONLY if the reference word is clearly wrong there (a typo by the teacher) and the learner word is clearly right, otherwise "unclear". Learners often write real but wrong words (dog -> bog), so prefer "reference" unless the reference word makes the sentence wrong. Reply only with JSON: {"fits": ["reference" | "learner" | "unclear", ...]} in the same order.',
+      },
+      { role: 'user', content: `Reference passage:\n${referenceText}\n\nLearner text:\n${typedText}\n\nPairs:\n${list}` },
+    ],
+  });
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return { error: `HTTP ${r.status} (${errorMessage(await r.text())})` };
+    const data = await r.json();
+    const parsed = JSON.parse(data.choices[0].message.content);
+    const fits = Array.isArray(parsed.fits) ? parsed.fits.map((x: unknown) => String(x)) : [];
+    return { fits };
+  } catch (e) {
+    return { error: 'could not reach Gemini: ' + (e instanceof Error ? e.message : String(e)) };
+  }
 }
 
 // Used only when no reference text is given: checks a fixed list of common misspellings.
@@ -212,6 +330,31 @@ export default (async (req) => {
       : scorePatternOnly(text);
 
     const { annotations, totalWords } = scored;
+    const referenceIssues: ReferenceIssue[] = 'referenceIssues' in scored ? scored.referenceIssues : [];
+    const referenceMismatch = 'referenceMismatch' in scored ? scored.referenceMismatch : false;
+
+    // Sentence-context check for real-word disagreements (needs Gemini; never changes the score).
+    let contextCheck: 'gemini' | 'skipped' | 'failed' = 'skipped';
+    let contextCheckError = '';
+    if (usedReference && LOVABLE_API_KEY && !referenceMismatch && 'contextCandidates' in scored && scored.contextCandidates.length > 0) {
+      const c = await geminiContextCheck(reference_text, text, scored.contextCandidates);
+      if ('fits' in c) {
+        contextCheck = 'gemini';
+        scored.contextCandidates.slice(0, 10).forEach((cand, i) => {
+          if (c.fits[i] === 'learner') {
+            referenceIssues.push({ reference: cand.expected.orig, learner: cand.typed.orig, suggestion: cand.typed.norm,
+              reason: 'context', counted: true, raw: cand.expected.raw });
+          }
+        });
+      } else {
+        contextCheck = 'failed';
+        contextCheckError = c.error;
+      }
+    }
+    referenceIssues.sort((a, b) => a.raw - b.raw);
+    const correctedReference = usedReference && referenceIssues.some((x) => x.suggestion)
+      ? applyReferenceFixes(reference_text, referenceIssues) : undefined;
+
     const errorRate = totalWords > 0 ? annotations.length / totalWords : 0;
     let probability = Math.min(0.95, errorRate * 2.5);
     if (totalWords < 10) probability = Math.max(0.4, probability * 0.7); // short texts: lower confidence
@@ -240,6 +383,11 @@ export default (async (req) => {
       engine: usedReference ? 'rule-based' : 'pattern-match',
       recommendationsSource,
       ...(fallbackReason ? { fallbackReason } : {}),
+      referenceIssues: referenceIssues.map(({ raw: _raw, ...rest }) => rest),
+      ...(correctedReference ? { correctedReference } : {}),
+      referenceMismatch,
+      contextCheck,
+      ...(contextCheckError ? { contextCheckError } : {}),
     };
 
     console.log('Prediction result:', { label, probability, annotationCount: annotations.length, recommendationsSource });

@@ -50,3 +50,13 @@ Without a key, scoring still works; recommendations use the built-in list and OC
 3. Deploy, then open `/api/gemini-test` on your site to check the key. Without a key the site still works, using rule-based scores and built-in recommendations.
 
 The same `api/` handlers also run on Vercel through `vercel.json`.
+
+## Checking the reference text
+
+The learner's text is compared with the reference text, so a mistake in the reference would otherwise be blamed on the learner. Each run therefore also checks the reference:
+
+- **Misspelled reference words** (for example "teh"): if a reference word is not in the English word list (`supabase/functions/predict/english-words.ts`, from the SCOWL/Hunspell en_US dictionary) and the learner's word is, it is not counted against the learner and a fix is suggested.
+- **Real words that do not fit the sentence** (for example "form" for "from"): when a Gemini key is set, Gemini is asked which word fits the sentence. It never changes the score; it only suggests a fix. This check sends both texts to Google.
+- **Wrong passage**: if fewer than half of the reference words were copied exactly or nearly, the page warns that the texts may not be the same passage.
+
+The page lists these with a **Fix reference text and re-check** button, which applies the suggested fixes and scores again.

@@ -31,7 +31,7 @@ for (const name of fs.readdirSync(srcDir)) {
   const outDir = path.join(outRoot, name);
   fs.mkdirSync(outDir, { recursive: true });
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
-    const src = fs.readFileSync(path.join(dir, f), "utf8").replaceAll("from './test-cases.ts'", "from './test-cases.js'");
+    const src = fs.readFileSync(path.join(dir, f), "utf8").replace(/from '\.\/([\w-]+)\.ts'/g, "from './$1.js'");
     fs.writeFileSync(path.join(outDir, f), convert(src, f === "index.ts"));
   }
   console.log("generated api/_lib/" + name);
