@@ -2,7 +2,7 @@
 export async function GET() {
   const key = process.env.GEMINI_API_KEY || "";
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-  if (!key) return Response.json({ ok: false, model, message: "No key found. Add GEMINI_API_KEY in Vercel > Project > Settings > Environment Variables, then redeploy." });
+  if (!key) return Response.json({ ok: false, model, message: "No key found. Add GEMINI_API_KEY in your hosting settings (Netlify: Site configuration > Environment variables; Vercel: Project > Settings > Environment Variables), then redeploy." });
   try {
     const r = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",

@@ -42,3 +42,11 @@ GEMINI_MODEL=gemini-3.8-flash
 Without a key, scoring still works; recommendations use the built-in list and OCR uses Tesseract.js.
 
 
+
+## Deploy on Netlify
+
+1. Import this repository at app.netlify.com (Add new site → Import an existing project). `netlify.toml` sets the build command, the publish folder and the functions.
+2. Under **Site configuration → Environment variables**, add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`).
+3. Deploy, then open `/api/gemini-test` on your site to check the key. Without a key the site still works, using rule-based scores and built-in recommendations.
+
+The same `api/` handlers also run on Vercel through `vercel.json`.
